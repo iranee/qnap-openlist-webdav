@@ -1,34 +1,17 @@
 # 多云盘挂载集成工具 for QNAP
-### Alist webdav for QNAP
+### OpenList webdav for QNAP
 A file list program that supports multiple storage, powered by Gin and Solidjs.
-# 暂停更新
- * 由于网络流传alist被卖已证实，暂时停止更新alist的插件，观望看看openlist怎么样
- * https://github.com/OpenListTeam/OpenList
+
 ## 介绍
 一款支持多种网络存储、挂载本地存储、阿里云盘、百度网盘、OneDrive、Google Drive 等,支持网页浏览和 WebDAV 的文件列表程序。
 
-* Alist 版开源：https://github.com/alist-org/alist   <a href="#">
-    <img src="https://img.shields.io/github/release/Xhofe/alist" alt="latest version" />
+* openlist 版开源：https://github.com/OpenListTeam/OpenList <a href="#">
+    <img src="https://img.shields.io/github/v/release/OpenListTeam/OpenList" alt="latest version" />
 
 ## 安装注意
  * 安装前先去【控制台】→【应用程序】→【Web服务器】→【☑️启用Web服务器】，不要更改默认80端口
- * 忘记密码，进入shell，运行命令 `$(getcfg alist Install_Path -f /etc/config/qpkg.conf)/alist --force-bin-dir admin set 123456`
+ * 忘记密码，进入shell，运行命令 `$(getcfg openlist Install_Path -f /etc/config/qpkg.conf)/openlist admin set 123456`
  * 设置用户admin的新密码为123456
-
- ## v3.37.3
- * 修复115网盘登录故障
- * 修复旧版阿里云Open的API导致不可登陆的故障  https://github.com/alist-org/alist/discussions/7189
- * 修复早期旧版本用户密码迁移的bug
- 
-
-## v3.26.0 Update:
-* 升级全新最新数据库形态，保留用户配置
- 
-## v3.13.2 Update:
-* 强烈建议卸载v3.13.2之前版本，安装最新版，以便使用最新数据库形态
-* 手动挂载网盘，尽量不要恢复之前备份内容。（可以将token记录后复制）
-* sqlite3文件提取路径为/share/CACHEDEV1_DATA/.qpkg/CacheMount/bin/sqlite3
-
 
 
 ## 如何使用
@@ -38,32 +21,76 @@ A file list program that supports multiple storage, powered by Gin and Solidjs.
 * 支持 ARM 构架的QNAP存储设备 【仅支持 arm-x41 及更高】 （旧版本插件）
 * 支持 aach64 构架的QNAP存储设备 【arm_64】
 
-## WebDAV 存储支持
-| 存储类型| 	列出文件/文件夹	| 下载文件| 	创建目录| 	重命名| 	移动| 	复制| 	上传文件/文件夹| 
-| :--------:   | :--------:  | :--------:  |:--------:  |:--------:  |:--------:  |:--------: |:--------: |
-| 本地存储|	✅|	✅|	✅|	✅|	✅|	✅|	✅|
-| 阿里云盘|	✅|	✅|	✅|	✅|	✅|	✅|	✅|
-| Onedrive|	✅|	✅|	✅|	✅|	✅|	✅|	✅|
-| 天翼云盘|	✅|	✅|	✅|	✅|	✅|	✅|	✅|
-| GoogleDrive|	✅|	✅|	✅|	✅|	✅|	❌|	✅|
-| 123pan|	✅|	✅|	✅|	✅|	✅|	❌|	✅|
-| FTP|	✅|	✅|	✅|	✅|	✅|	❌|	✅|
-| SFTP|	✅|	✅|	✅|	✅|	✅|	❌|	✅|
-| PikPak|	✅|	✅|	✅|	✅|	✅|	✅|	✅|
-| S3|	✅|	✅|	✅|	✅|	✅|	✅|	✅|
-| USS|	✅|	✅|	✅|	✅|	✅|	✅|	✅|
-| WebDAV|	✅|	✅|	✅|	✅|	✅|	✅|	✅|
-| Teambition|	✅|	✅|	✅|	✅|	✅|	✅|	✅|
-| 分秒帧|	✅|	✅|	✅|	✅|	✅|	✅|	✅|
-| 和彩云|	✅|	✅|	✅|	✅|	✅|	✅|	✅|
-| YandexDisk|	✅|	✅|	✅|	✅|	✅|	✅|	✅|
-| 百度网盘|	✅|	✅|	✅|	✅|	✅|	✅|	✅|
-| 夸克网盘|	✅|	✅|	✅|	✅|	✅|	✅|	✅|
+## 存储支持
 
-## 注意
-* 如何挂载网盘：https://alist.nn.ci/zh/guide/
-* 如需挂载阿里云盘，改为挂载【阿里云盘 Open】
-* 点击这里获取【阿里云盘Open】token ：https://alist.nn.ci/zh/guide/drivers/aliyundrive_open.html
+| 存储类型 | 支持状态 |
+| :------- | :------: |
+| 本地存储 | ✅ |
+| 阿里云盘 | ✅ |
+| OneDrive / Sharepoint (国际版、中国、DE、US) | ✅ |
+| 天翼云盘（个人、家庭） | ✅ |
+| GoogleDrive | ✅ |
+| 123云盘 | ✅ |
+| FTP / SFTP | ✅ |
+| PikPak | ✅ |
+| S3 | ✅ |
+| Seafile | ✅ |
+| 又拍云对象存储 | ✅ |
+| WebDAV | ✅ |
+| Teambition (中国、国际) | ✅ |
+| MediaFire | ✅ |
+| 分秒帧 | ✅ |
+| ProtonDrive | ✅ |
+| 和彩云（个人、家庭、群组） | ✅ |
+| YandexDisk | ✅ |
+| 百度网盘 | ✅ |
+| Terabox | ✅ |
+| UC网盘 | ✅ |
+| 夸克网盘 | ✅ |
+| 迅雷网盘 | ✅ |
+| 蓝奏云 | ✅ |
+| 蓝奏云优享版 | ✅ |
+| Google 相册 | ✅ |
+| Mega.nz | ✅ |
+| 百度相册 | ✅ |
+| SMB | ✅ |
+| 115 | ✅ |
+| Cloudreve | ✅ |
+| Dropbox | ✅ |
+| 飞机盘 | ✅ |
+| 多吉云 | ✅ |
+| Azure Blob Storage | ✅ |
+| 超星 | ✅ |
+| CNB | ✅ |
+| Degoo | ✅ |
+| 豆包 | ✅ |
+| Febbox | ✅ |
+| GitHub | ✅ |
+| OpenList | ✅ |
+| Teldrive | ✅ |
+| 微云 | ✅ |
+
+## 功能特性
+
+* 部署方便，开箱即用
+* 文件预览（PDF、markdown、代码、纯文本等）
+* 画廊模式下的图片预览
+* 视频和音频预览，支持歌词和字幕
+* Office 文档预览（docx、pptx、xlsx 等）
+* `README.md` 预览渲染
+* 文件永久链接复制和直接文件下载
+* 黑暗模式
+* 国际化
+* 受保护的路由（密码保护和认证）
+* WebDAV
+* Docker 部署
+* Cloudflare Workers 代理
+* 文件/文件夹打包下载
+* 网页上传（可允许访客上传）、删除、新建文件夹、重命名、移动和复制
+* 离线下载
+* 跨存储复制文件
+* 单文件多线程下载/流式加速
+
 
 ## 配置示意图 
  | 类型| 	配置	|
@@ -76,16 +103,16 @@ A file list program that supports multiple storage, powered by Gin and Solidjs.
 | webdav根目录 Url|http://localhost:5244/dav/|
 
 * 注意：威联通HBS3挂载的名称必须为英文，不能挂载/dav/根目录，要带网盘的挂载路径
-* 例如阿里云盘的alist挂载目录名称是aliyundrive
+* 例如阿里云盘的openlist挂载目录名称是aliyundrive
 * 挂载URL：http://127.0.0.1:5244/dav/aliyundrive
 
 ## 交流群
-* 群名称： alist for QNAP QQ群号： 529743094
+* 群名称： openlist for QNAP QQ群号： 529743094
 * 可以交流各种QNAP技术、技巧、问题。
-<img src="https://raw.githubusercontent.com/iranee/qnap-alist-webdav/main/qq-group.jpg" alt="QQ GRPUP" width="500"/>
+<img src="https://raw.githubusercontent.com/iranee/qnap-openlist-webdav/main/qq-group.jpg" alt="QQ GRPUP" width="500"/>
 
 ## Starchart
-![Star History Chart](https://api.star-history.com/svg?repos=iranee/qnap-alist-webdav&type=Date)
+![Star History Chart](https://api.star-history.com/svg?repos=iranee/qnap-openlist-webdav&type=Date)
 
 ## 开源声明
  1. 本软件为免费开源项目，无任何形式的盈利行为。
