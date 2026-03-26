@@ -1,0 +1,345 @@
+name: Build OpenList QPKG
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'OpenList版本号（留空则自动获取最新版）'
+        required: false
+        default: ''
+      notes:
+        description: '更新说明（支持Markdown）'
+        required: false
+        type: string
+        default: ''
+      force_build:
+        description: '强制构建（即使版本已存在）'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine Version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            echo "使用手动指定版本: $VERSION"
+          else
+            echo "获取 OpenList 最新版本..."
+            VERSION=$(curl -s "https://api.github.com/repos/OpenListTeam/OpenList/releases/latest" \
+              | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/^v//' || echo "")
+
+            if [ -z "$VERSION" ]; then
+              echo "无法获取最新版本号"
+              exit 1
+            fi
+            echo "自动获取到版本: $VERSION"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Prepare Release Notes
+        id: notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          if [ -n "${{ github.event.inputs.notes }}" ]; then
+            NOTES="${{ github.event.inputs.notes }}"
+          else
+            UPSTREAM_NOTES=$(curl -s "https://api.github.com/repos/OpenListTeam/OpenList/releases/latest" \
+              | jq -r '.body' 2>/dev/null || echo "")
+            if [ -n "$UPSTREAM_NOTES" ] && [ "$UPSTREAM_NOTES" != "null" ]; then
+              NOTES="更新至 v${VERSION}"$'\n\n'"## 上游更新说明"$'\n'"${UPSTREAM_NOTES}"
+            else
+              NOTES="更新至 v${VERSION}"
+            fi
+          fi
+
+          {
+            echo "notes<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+          echo "更新说明已准备"
+
+      - name: Check if version exists
+        id: check
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          FORCE="${{ github.event.inputs.force_build }}"
+
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            if [ "$FORCE" = "true" ]; then
+              echo "版本 v$VERSION 已存在，但强制构建已启用"
+              echo "exists=false" >> $GITHUB_OUTPUT
+              git tag -d "v$VERSION" 2>/dev/null || true
+              git push origin ":refs/tags/v$VERSION" 2>/dev/null || true
+            else
+              echo "版本 v$VERSION 已存在，跳过构建"
+              echo "exists=true" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "版本 v$VERSION 是新版本，开始构建"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download OpenList Binaries
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BASE_URL="https://github.com/OpenListTeam/OpenList/releases/download/v${VERSION}"
+
+          declare -A ARCH_FILES=(
+            ["x86_64"]="openlist-linux-musl-amd64.tar.gz"
+            ["arm_64"]="openlist-linux-musl-arm64.tar.gz"
+          )
+
+          mkdir -p /tmp/openlist-binaries
+
+          for arch in "${!ARCH_FILES[@]}"; do
+            file="${ARCH_FILES[$arch]}"
+            folder="/tmp/openlist-binaries/${arch}"
+            mkdir -p "$folder"
+
+            echo "下载 ${arch}: ${file}"
+            if wget -q "${BASE_URL}/${file}" -O "$folder/$file"; then
+              echo "  解压..."
+              tar -xzf "$folder/$file" -C "$folder"
+              if [ -f "$folder/openlist" ]; then
+                chmod +x "$folder/openlist"
+                echo "  提取完成: $folder/openlist"
+              else
+                echo "  错误：未找到 openlist 二进制文件"
+                ls -la "$folder/"
+                exit 1
+              fi
+              rm -f "$folder/$file"
+            else
+              echo "  下载失败: ${BASE_URL}/${file}"
+              exit 1
+            fi
+          done
+          echo "所有二进制文件下载完成"
+
+      - name: Install Dependencies
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends git-core ca-certificates wget python-is-python3 make gcc
+
+      - name: Install QDK
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          git clone https://github.com/qnap-dev/QDK.git /tmp/QDK
+          cd /tmp/QDK
+          sudo ./InstallToUbuntu.sh install
+          echo "/usr/share/QDK/bin" >> $GITHUB_PATH
+
+      - name: Prepare Build Directory
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          mkdir -p /tmp/openlist-build
+          rsync -a --exclude='.git' --exclude='.github' \
+            $GITHUB_WORKSPACE/ /tmp/openlist-build/
+
+          for arch in x86_64 arm_64; do
+            mkdir -p /tmp/openlist-build/${arch}
+            if [ -f "/tmp/openlist-binaries/${arch}/openlist" ]; then
+              cp "/tmp/openlist-binaries/${arch}/openlist" /tmp/openlist-build/${arch}/
+              echo "架构 ${arch} 二进制已放入"
+            else
+              echo "错误：缺少 ${arch} 的二进制文件"
+              exit 1
+            fi
+          done
+
+      - name: Update Version in Build Files
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          sed -i 's/^QPKG_VER=.*/QPKG_VER="'"${VERSION}"'"/' /tmp/openlist-build/qpkg.cfg
+          echo "qpkg.cfg 已更新:"
+          grep "^QPKG_VER=" /tmp/openlist-build/qpkg.cfg
+
+          sed -i 's/^Ver=.*/Ver='"${VERSION}"'/' /tmp/openlist-build/package_routines
+          echo "package_routines 已更新:"
+          grep "^Ver=" /tmp/openlist-build/package_routines
+
+      - name: Build QPKG
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          cd /tmp/openlist-build
+          qbuild
+
+          if [ ! -d "build" ] || [ -z "$(ls -A build/*.qpkg 2>/dev/null)" ]; then
+            echo "QPKG 构建失败"
+            exit 1
+          fi
+
+          echo "QPKG 构建成功"
+          ls -lh build/
+
+      - name: Prepare Release Files
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/qpkg-release
+
+          VERSION="${{ steps.version.outputs.version }}"
+          cd /tmp/openlist-build/build
+
+          for file in *.qpkg; do
+            if [[ "$file" == *"x86_64"* ]] || [[ "$file" == *"x86-64"* ]] || [[ "$file" == *"amd64"* ]]; then
+              NEW_NAME="qnap-openlist-webdav_${VERSION}_x86_64.qpkg"
+            elif [[ "$file" == *"arm_64"* ]] || [[ "$file" == *"arm-64"* ]] || [[ "$file" == *"aarch64"* ]] || [[ "$file" == *"arm64"* ]]; then
+              NEW_NAME="qnap-openlist-webdav_${VERSION}_arm_64.qpkg"
+            else
+              echo "未知架构文件，跳过: $file"
+              continue
+            fi
+            cp "$file" "$GITHUB_WORKSPACE/qpkg-release/$NEW_NAME"
+            echo "已复制并重命名: $NEW_NAME"
+          done
+
+          cd $GITHUB_WORKSPACE/qpkg-release
+          for file in *.qpkg; do
+            md5sum "$file" > "${file}.md5"
+            echo "已生成校验: ${file}.md5"
+          done
+          ls -lh
+
+      - name: Update Repository Config
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          sed -i 's/^QPKG_VER=.*/QPKG_VER="'"${VERSION}"'"/' qpkg.cfg
+          sed -i 's/^Ver=.*/Ver='"${VERSION}"'/' package_routines
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add qpkg.cfg package_routines
+
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: bump OpenList version to v${VERSION}"
+            git push origin HEAD:main
+          fi
+
+      - name: Create Tag
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "v${VERSION}" -m "Release OpenList QPKG v${VERSION}"
+          git push origin "v${VERSION}"
+
+      - name: Delete Existing Release
+        if: steps.check.outputs.exists == 'false' && github.event.inputs.force_build == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const version = '${{ steps.version.outputs.version }}';
+            const tagName = `v${version}`;
+            try {
+              const release = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: tagName
+              });
+              await github.rest.repos.deleteRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: release.data.id
+              });
+              console.log(`已删除旧的 Release: ${tagName}`);
+            } catch (error) {
+              console.log(`Release ${tagName} 不存在或已删除`);
+            }
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: "qnap-openlist-webdav v${{ steps.version.outputs.version }}"
+          files: qpkg-release/*
+          body: |
+            # qnap-openlist-webdav v${{ steps.version.outputs.version }}
+
+            Built with QDK (QNAP Development Kit)
+
+            ## 更新说明
+            ${{ steps.notes.outputs.notes }}
+
+            ## 安装方法
+            1. 下载对应架构的 `.qpkg` 文件
+            2. 登录 QNAP 管理界面 → App Center
+            3. 点击右上角齿轮图标 → 安装应用程序
+            4. 选择下载的 `.qpkg` 文件进行安装
+
+            ## 支持的架构
+            - **x86_64**：Intel/AMD 64位处理器
+            - **arm_64**：ARM 64位处理器（aarch64）
+
+            ## Build Information
+            - Version: ${{ steps.version.outputs.version }}
+            - Commit: ${{ github.sha }}
+            - OpenList Upstream: https://github.com/OpenListTeam/OpenList
+          draft: true
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Artifacts
+        if: steps.check.outputs.exists == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenList-QPKG-v${{ steps.version.outputs.version }}
+          path: qpkg-release/*
+          retention-days: 30
+
+      - name: Build Summary
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          FORCE="${{ github.event.inputs.force_build }}"
+
+          if [ "$FORCE" = "true" ]; then
+            echo "### 🔄 OpenList QPKG v${VERSION} 强制重新构建成功" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ✅ OpenList QPKG v${VERSION} 构建成功" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**构建的文件:**" >> $GITHUB_STEP_SUMMARY
+          cd $GITHUB_WORKSPACE/qpkg-release
+          for file in *.qpkg; do
+            size=$(du -h "$file" | cut -f1)
+            echo "- ${file} (${size})" >> $GITHUB_STEP_SUMMARY
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Release:** https://github.com/${{ github.repository }}/releases/tag/v${VERSION}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Skip Summary
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "### ⏭️ 版本 v${VERSION} 已存在，跳过构建" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "💡 如需重新构建，请勾选 '强制构建' 选项" >> $GITHUB_STEP_SUMMARY
